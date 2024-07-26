@@ -1,10 +1,10 @@
+### The Challenge
+
 You are given the transcript of the following Sigma protocol between Alice and Bob, proving knowledge of x such that h = g^x.
-1. Alice chooses a random r ∈Zp
-p and computes a = gr. She sends a to Bob.
+1. Alice chooses a random r ∈Zp and computes a = g^r. She sends a to Bob.
 2. Alice and Bobs compute c = H(g∥h∥a), where H() is a cryptographic hash function SHA3-512,and ∥ is strings concatenation.
-3. After receiving a random challenge c ∈Zp 
-p from Bob, Alice computes the response t = r + cx m mod ∅(p). Where ∅(p) is Euler's totient function.
-4. Finally, Bob verifies that gt = a * hc.
+3. After receiving a random challenge c ∈ Zp from Bob, Alice computes the response t = r + cx mod ∅(p). Where ∅(p) is Euler's totient function.
+4. Finally, Bob verifies that g^t = a * (h^c).
 
 Alice's pseudo-random number generator is broken and outputs only 50-bit numbers. What is the value x  in the protocol?
 p=21847359589888208475506724917162265063571401985325370367631361781114029653025956815157605328190411141044160689815741319381196532979871500038979862309158738250945118554961626824152307536605872616502884288878062467052777605227846709781850614792748458838951342204812601838112937805371782600380106020522884406452823818824455683982042882928183431194593189171431066371138510252979648513553078762584596147427456837289623008879364829477705183636149304120998948654278133874026711188494311770883514889363351380064520413459602696141353949407971810071848354127868725934057811052285511726070951954828625761984797831079801857828431
@@ -18,3 +18,22 @@ a=638420194536425941648461855623068243099241749876457573986919027252373548148401
 c=71778295986317464977181358951733941026818952858286003634564124680358033840379585505943440223381732309059767994475589178857749561223221520781996969649457324093122032073466344010212086647833256617483980995376446966096288489787358374855411062932987688832004337428232104632177155706591924834977564049130435850596
 
 t=9312646501987776677123069996165334953320238908514227830892894577967066010696080028032345464092038552178334908514757885668168857837159455619655708977528533978424087822692334952394425457616804123105906796449332890016607809976150608314165053890213678247959214214602749195694451747310100020199660344584515222600627105504679940926315507796335602231758745928978650450797822806071056984134
+
+### The Solution
+
+The challenge is pretty straightforward because they have mentioned that the PRNG is broken. Although CTF's are notorious in hiding the actual vulnerability. So let's review the crypto scheme. 
+
+- At first glance, the above steps seem like they represent the signing part of Schnorr's signature scheme. But it is Schnorr's identification scheme that provides zero-knowledge proofs of identity for authentication.
+- The first step is calculating the public key `h` from `x`. This is pretty straightforward usage of discrete logarithms. Note that in the scheme we try to prove Alice's identity, which is `x`(in the crypto world identities are private keys)
+- The second step is a commitment of the random number `r`. This commitment can be seen as an initiation of proving an identity. 
+- The third step is a non-interactive challenge generation using the fiat-shamir trick. Non-interactiveness also ensures honest verifier.
+- Fourth and fifth step are the proof and verification steps. Notice the proof `t`, includes the commitment secret `r` and the witness(of identity) `x` along with the challenge `c`. Completeness can be easily verified.
+- https://medium.com/@noah_h/schnorrs-identification-scheme-e9c029500cbd
+
+We now know that the scheme is being used as described so there are no attacks possible on the incorrect usage. Furthermore, any known attacks require more information that is not presented in the challenge hence we have to break the discrete logarithm.
+
+We use baby-step-giant-step to break the discrete logarithm. It is a very simple algorithm.
+- Imagine you were to guess the value `x` in `alpha^x = beta`. since the prng is broken and outputs only 50-bit numbers, you would have to try 2^50. While this is possible to do and generally considered weak for brute forcing it is no fun, and it would take days to break on my shitty laptop. 
+- BSGS, breaks down the exponent into two components `x = im + j` and converts the second-preimage attack into a collision attack (in loose terms), How?
+- `beta = alpha^x = alpha^(im + j)` => `beta * (1/(alpha^m)^i = alpha^j`. What I can do now is precalculate `alpha^j` and store in a database. then I can iterate over the `i` and find a collision. In this case the most intelligent choice is `m = sqrt(n)` and `j varies from 0 to m` and the same for `i`. This way the O(n) complexity is split into O(sqrt(n)) space complexity and O(sqrt(n)) time complexity.
+- However, depending on available resources you can break down the problem further by storing only chunks of values and bruteforcing `i` against one chunk at a time. Therefore if you split `alpha^j` values into `k` chunks then you bruteforce complexity becomes `O(k*sqrt(n))` and your space complexity reduces `O(sqrt(n)/k)`. Why you would use such a breakdown is because, your storage needs to be fast for the algorithm to give you an advantage, hence you need to use hash tables on the RAM. If you don't have enough ram you can compensate with extra CPU cycles.
